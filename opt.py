@@ -5,14 +5,10 @@ m = [
     {0,1,2,3,4,16,15,14,13,12,11,10},
     {3,4,5,6,11,15,14},
     {0,1,2,3,4,5,6,11,14,15,16},
-    {},
-    {},
-    {},
-    {},
-    # {0,1,2,3,5,6,7,11,12,13,14,15,16},
-    # {0,1,2,6,7,8,9,10,11,12,15,16},
-    # {0,1,2,3,6,7,8,9,10,11,12,15,16},
-    # {0,1,2,3,4,5,6,7,10,11,12,13,14,15,16}
+    {0,1,2,3,5,6,7,11,12,13,14,15,16},
+    {0,1,2,6,7,8,9,10,11,12,15,16},
+    {0,1,2,3,6,7,8,9,10,11,12,15,16},
+    {0,1,2,3,4,5,6,7,10,11,12,13,14,15,16}
 ]
 
 # we have a 3d matrix of 17 * 8 * 3 (for three choices)
@@ -54,10 +50,13 @@ for c, r in CELLS:
     else:
         model.cons.add(sum(model.A[c, r, k] for k in MODS) == 0)
 
+def in_bounds(c, r):
+    return c in COLUMNS and r in ROWS
+
 def safe_get(c, r, k):
-    if c not in COLUMNS or r not in ROWS:
-        return 0
-    return model.A[c, r, k]
+    if in_bounds(c, r):
+        return model.A[c, r, k]
+    return 0
 
 def connected(xs, start, cont):
   curr = start
@@ -96,8 +95,26 @@ def col(c, r):
 def multiplier(c, r):
   return 1 + adj(c, r) + row(c, r) + col(c, r)
 
+def non_mod(c, r):
+  return 1 - sum(model.A[c, r, k] for k in MODS)
+
+def active_non_mod(c, r):
+  if in_bounds(c, r) and c in m[r]:
+    return non_mod(c, r)
+  else:
+    return 0
+
+# any adj must have more than 2 non-modifiers
+for c, r in ACTIVE_CELLS:
+  model.cons.add(active_non_mod(c-1, r) + active_non_mod(c+1, r) + active_non_mod(c, r-1) + active_non_mod(c, r+1) >= 3 * model.A[c, r, ADJ])
+
+# connected direction must have more than 4 non-modifiers
+for c, r in ACTIVE_CELLS:
+  model.cons.add(sum(active_non_mod(x, r) for x in connectedHorizontal(c, r)) >= 5 * model.A[c, r, ROW])
+  model.cons.add(sum(active_non_mod(c, y) for y in connectedVertical(c, r)) >= 5 * model.A[c, r, COL])
+
 # big M variable
-M = 2
+M = 2.8
 model.w = pyomo.Var(COLUMNS, ROWS, domain=pyomo.NonNegativeReals)
 
 for c, r in ACTIVE_CELLS:
